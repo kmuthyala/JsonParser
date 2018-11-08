@@ -4,9 +4,9 @@ namespace JsonUtils.Parser.Exceptions
 {
   public class InvalidJsonException : Exception
   {
-    public InvalidJsonException(int line) : base(line.ToString())
+    public InvalidJsonException(short line) : base("Invalid Json at line " + line)
     {
-
+      
     }
   }
 }

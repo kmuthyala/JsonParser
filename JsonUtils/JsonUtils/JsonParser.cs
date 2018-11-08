@@ -1,20 +1,26 @@
-﻿using JsonUtils.Parser.Exceptions;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using JsonUtils.Parser.Exceptions;
 
 namespace JsonUtils.Parser
 {
   public class JsonParser
   {
-    private TextReader _reader;
+    private readonly TextReader _reader;
     private char _char;
     private bool _canRead;
     private short _line = 1;
+    private short _lineDecrement;
     private bool _skipSpace = true;
+    private bool _insideObject;
+    // per Json Specification, only certain chars are valid after colon
+    private char[] _validCharsAfterColon = { '"', '{', '[', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 't', 'f', 'n' }; // for when inside object
+    private char[] _braceAndQuotesAfterColon = { '"', '{', '[' }; // for when not inside object
+
     public JsonParser(Stream jsonStream)
     {
       _reader = new StreamReader(jsonStream);
@@ -33,21 +39,22 @@ namespace JsonUtils.Parser
 
     private JsonObject ReadObject(string keyy)
     {
-      var obj = new JsonObject { IsAtLine = _line};
+      var obj = new JsonObject { IsAtLine = _line, Type = JsonObjectType.Object };
+      _insideObject = true;
       while (true)
       {
         ReadNext();
 
-        if (_char == '}')// if empty object
+        if (_char == '}') // if empty object
+        {
+          _insideObject = false;
           break;
-        
-        var key = ReadKey(); // gets key
-        ReadNext();
-        CheckFor(':');
-        ReadNext();
+        }
 
+        var key = ReadKey(); // gets key
+        CheckForValidCharacters();
         var value = ReadValue(key);
-       
+
         if (obj.ContainsKey(key))
           obj[key].DuplicatesAt.Add(_line);
         else
@@ -60,7 +67,12 @@ namespace JsonUtils.Parser
           continue;
 
         if (_char == '}')
+        {
+          _insideObject = false;
           break;
+        }
+
+        throw new InvalidJsonException(_line);
       }
       if (keyy != null)
       {
@@ -81,8 +93,10 @@ namespace JsonUtils.Parser
 
       while (true)
       {
-        list.Add(ReadValue());
-        ReadNext();
+        var val = ReadValue();
+        list.Add(val);
+        if (val.Type == JsonObjectType.Object || val.Type == JsonObjectType.Array || val.Type == JsonObjectType.String)
+          ReadNext();
         if (_char != ',')
         {
           break;
@@ -91,6 +105,7 @@ namespace JsonUtils.Parser
       }
       if (_char != ']')
         throw new InvalidJsonException(_line);
+
       return list;
     }
     private string ReadKey()
@@ -141,7 +156,7 @@ namespace JsonUtils.Parser
       return new JsonObject
       {
         Key = key,
-        Value = ReadString(skipSpace:false),
+        Value = ReadString(skipSpace: false),
         Type = JsonObjectType.String,
         IsAtLine = _line
       };
@@ -149,9 +164,10 @@ namespace JsonUtils.Parser
     private JsonObject ReadNumeric(string key)
     {
       var sb = new StringBuilder();
+      _lineDecrement = 0;
       while (true)
       {
-        if (_char == ',' || _char == '}')
+        if (_char == ',' || _char == '}' || _char == ']')
           break;
 
         sb.Append(_char);
@@ -169,14 +185,15 @@ namespace JsonUtils.Parser
           IsAtLine = _line
         };
       }
-      throw new InvalidJsonException(_line);
+      var line = (short)(_line - _lineDecrement);
+      throw new InvalidJsonException(line);
     }
     private JsonObject ReadBoolOrNull(string key)
     {
       var sb = new StringBuilder();
       while (true)
       {
-        if (_char == ',')
+        if (_char == ',' || _char == '}' || _char == ']')
           break;
 
         sb.Append(_char);
@@ -300,13 +317,30 @@ namespace JsonUtils.Parser
       if (_char == '\n')
       {
         _line++;
+        _lineDecrement++;
       }
     }
-    private void CheckFor(char expected)
+    private void CheckForValidCharacters()
     {
-      if (_char != expected)
+      ReadNext();
+
+      if (_char != ':')
         throw new InvalidJsonException(_line);
+
+      ReadNext();
+
+      if (_insideObject)
+      {
+        if (_validCharsAfterColon.All(c => _char != c))
+          throw new InvalidJsonException(_line);
+      }
+      else
+      {
+        if (_braceAndQuotesAfterColon.All(c => _char != c))
+          throw new InvalidJsonException(_line);
+      }
     }
+
   }
 
   public enum JsonObjectType

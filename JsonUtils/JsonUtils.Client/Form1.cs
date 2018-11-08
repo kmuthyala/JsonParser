@@ -21,7 +21,7 @@ namespace JsonUtils.Client
       }
       catch (Exception exception)
       {
-        txtOutput.Text = "Invalid Json" + (exception is InvalidJsonException ? " at line " + exception.Message : "") + ".";
+        txtOutput.Text = exception.Message;
       }
     }
   }

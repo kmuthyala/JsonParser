@@ -60,7 +60,7 @@ namespace JsonUtils.Parser
         else
           obj.Add(key, value);
 
-        if (value.Type != JsonObjectType.Number)
+        if (value.Type != JsonObjectType.Number && value.Type != JsonObjectType.Null && value.Type != JsonObjectType.Boolean)
           ReadNext();
 
         if (_char == ',')
